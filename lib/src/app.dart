@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:lottie/lottie.dart';
+import 'package:smart_park/src/catalog/catalog_service.dart';
 
 import 'settings/settings_controller.dart';
-import 'package:lottie/lottie.dart';
 import 'settings/settings_view.dart';
+import 'catalog/catalog_controller.dart';
+import 'catalog/catalog_view.dart';
+import 'catalog/catalog_service.dart';
 
 /// The Widget that configures your application.
 class MyApp extends StatelessWidget {
-  const MyApp({
+  MyApp({
     Key? key,
     required this.settingsController,
   }) : super(key: key);
 
   final SettingsController settingsController;
+  final catalogController = CatalogController(CatalogService());
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +35,6 @@ class MyApp extends StatelessWidget {
           // returns to the app after it has been killed while running in the
           // background.
           restorationScopeId: 'app',
-
           // Provide the generated AppLocalizations to the MaterialApp. This
           // allows descendant Widgets to display the correct translations
           // depending on the user's locale.
@@ -64,7 +68,7 @@ class MyApp extends StatelessWidget {
             return MaterialPageRoute<void>(
               settings: routeSettings,
               builder: (BuildContext context) {
-                return SettingsView(controller: settingsController);
+                return CatalogView(catalogController: catalogController);
               },
             );
           },
@@ -112,23 +116,17 @@ class _SplashScreenState extends State<SplashScreen>
         animate: true,
         onLoaded: (composition) {
           _controller
-            ..duration = Duration(seconds: 3)
+            ..duration = const Duration(seconds: 3)
             ..forward().whenComplete(() => Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const HomePage()),
+                  MaterialPageRoute(
+                      builder: (context) => CatalogView(
+                            catalogController:
+                                CatalogController(CatalogService()),
+                          )),
                 ));
         },
       ),
-    );
-  }
-}
-
-class HomePage extends StatelessWidget {
-  const HomePage({Key? key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: const Center(child: Text('Welcome to Smart Parking Solution')),
     );
   }
 }
