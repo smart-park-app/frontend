@@ -2,20 +2,37 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:mapmyindia_gl/mapmyindia_gl.dart';
+import 'package:provider/provider.dart';
 import 'package:smart_park/src/widgets/app_drawer.dart';
 import 'catalog_controller.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:mapmyindia_place_widget/mapmyindia_place_widget.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 
-/// Displays available slots near a location
-///
-/// When a user changes search location, catalog must be updated
-class CatalogView extends StatelessWidget {
+class CatalogView extends StatefulWidget {
   const CatalogView({Key? key, required this.catalogController})
       : super(key: key);
 
   static const routeName = '/search';
+
+  final CatalogController catalogController;
+
+  @override
+  _CatalogViewstate createState() =>
+      _CatalogViewstate(catalogController: catalogController);
+}
+
+/// Displays available slots near a location
+///
+/// When a user changes search location, catalog must be updated
+class _CatalogViewstate extends State<CatalogView>
+    with AutomaticKeepAliveClientMixin {
+  _CatalogViewstate({required this.catalogController});
+
+  @override
+  bool get wantKeepAlive => true;
 
   final CatalogController catalogController;
 
@@ -35,6 +52,10 @@ class CatalogView extends StatelessWidget {
     var userLocationLatLng = LatLng(30.7410517, 76.779015);
     late ELocation? eLocation;
     String selectedAddr = "";
+    var slotSheetInfo = [
+      const Text("Search a place to see nearby slots"),
+      const SizedBox(height: 500)
+    ];
 
     return Scaffold(
         drawer: const AppDrawer(),
@@ -59,6 +80,8 @@ class CatalogView extends StatelessWidget {
         body: Stack(
           children: [
             MapmyIndiaMap(
+              trackCameraPosition: true,
+              compassEnabled: true,
               initialCameraPosition: CameraPosition(
                 target: userLocationLatLng,
                 zoom: 15.0,
@@ -102,6 +125,7 @@ class CatalogView extends StatelessWidget {
                                 (eLocation?.placeAddress.toString() ?? ""),
                             if (selectedAddr != "")
                               {
+                                catalogController.clearNearbySlots(),
                                 print(
                                     "========== Searching coordinates for - " +
                                         selectedAddr.trim()),
@@ -110,43 +134,22 @@ class CatalogView extends StatelessWidget {
                                   if (response.isNotEmpty) {
                                     print("====== Response =========" +
                                         json.encode(response.first.toJson()));
-                                    mapController.moveCamera(
+                                    context
+                                        .read<CatalogController>()
+                                        .getNearbySlots(response.first.latitude,
+                                            response.first.longitude);
+                                    mapController.easeCamera(
                                         CameraUpdate.newLatLngZoom(
                                             LatLng(response.first.latitude,
                                                 response.first.longitude),
                                             15));
+                                    sleep(const Duration(seconds: 2));
                                     mapController
                                         .addSymbol(SymbolOptions(
                                             geometry: LatLng(
                                                 response.first.latitude,
                                                 response.first.longitude)))
                                         .then((value) => symbol = value);
-                                    // showModalBottomSheet(
-                                    //     isScrollControlled: true,
-                                    //     context: context,
-                                    //     builder: (BuildContext context) {
-                                    //       return Card(
-                                    //           elevation: 12.0,
-                                    //           shape: RoundedRectangleBorder(
-                                    //               borderRadius:
-                                    //                   BorderRadius.circular(
-                                    //                       24)),
-                                    //           margin: const EdgeInsets.all(0),
-                                    //           child: Container(
-                                    //             height: 350,
-                                    //             color: Colors.grey,
-                                    //             child: Column(
-                                    //               children: <Widget>[
-                                    //                 CustomDraggingHandle(),
-                                    //                 const Text(
-                                    //                   'Available Slots',
-                                    //                   textAlign:
-                                    //                       TextAlign.center,
-                                    //                 ),
-                                    //               ],
-                                    //             ),
-                                    //           ));
-                                    //     });
                                   } else {
                                     print("Error response seems to be empty");
                                   }
@@ -180,14 +183,14 @@ class CatalogView extends StatelessWidget {
               ),
             ),
             DraggableScrollableSheet(
-              initialChildSize: 0.08,
+              initialChildSize: 0.1,
               minChildSize: 0.08,
               maxChildSize: 0.5,
               builder:
                   (BuildContext context, ScrollController scrollController) {
                 return SingleChildScrollView(
                   controller: scrollController,
-                  child: CustomScrollViewContent(),
+                  child: CustomScrollViewContent(slotSheetInfo: slotSheetInfo),
                 );
               },
             ),
@@ -212,7 +215,10 @@ class CustomDraggingHandle extends StatelessWidget {
 
 /// Content of the DraggableBottomSheet's child SingleChildScrollView
 class CustomScrollViewContent extends StatelessWidget {
-  const CustomScrollViewContent({Key? key}) : super(key: key);
+  const CustomScrollViewContent({Key? key, required this.slotSheetInfo})
+      : super(key: key);
+
+  final List<Widget> slotSheetInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -224,25 +230,71 @@ class CustomScrollViewContent extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(24),
         ),
-        child: CustomInnerContent(),
+        child: CustomInnerContent(slotSheetInfo: slotSheetInfo),
       ),
     );
   }
 }
 
 class CustomInnerContent extends StatelessWidget {
-  const CustomInnerContent({Key? key}) : super(key: key);
+  const CustomInnerContent({Key? key, required this.slotSheetInfo})
+      : super(key: key);
+
+  final List<Widget> slotSheetInfo;
+
+  List<Widget> generateListView(List<dynamic> slotList, bool initial) {
+    List<Widget> extraInfo = [];
+
+    print("Slot List is ");
+    print(slotList);
+
+    if (slotList.isEmpty) {
+      if (initial == true) {
+        extraInfo = [
+          const Text("Search a place to see nearby slots"),
+          const SizedBox(height: 400)
+        ];
+      } else {
+        extraInfo = [
+          const Text("No slots available near the location you chose"),
+          const SizedBox(height: 400)
+        ];
+      }
+    } else {
+      print("======= Nearby slots not empty");
+
+      extraInfo.add(ListView.builder(
+          shrinkWrap: true,
+          itemCount: slotList.length,
+          itemBuilder: (BuildContext context, int index) {
+            return ListTile(
+                title: Text(
+                  slotList[index]['address'],
+                  style: TextStyle(color: Colors.green, fontSize: 15),
+                ),
+                trailing: Text(slotList[index]['distance'].toString() + "m"));
+          }));
+    }
+    extraInfo.add(
+        SizedBox(height: (400 / (slotList.isEmpty ? 1 : slotList.length))));
+    return extraInfo;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: <Widget>[
-        SizedBox(height: 12),
-        CustomDraggingHandle(),
-        SizedBox(height: 16),
-        Text("Search to see available slots"),
-        SizedBox(height: 500),
-      ],
-    );
+    // CatalogController dataProvider = Provider.of<CatalogController>(context);
+    List<Widget> defaultInfo = [
+      SizedBox(height: 12),
+      CustomDraggingHandle(),
+      SizedBox(height: 16),
+    ];
+
+    print("======== Nearby slots updated. Recreating widget using - ");
+
+    return Consumer<CatalogController>(
+        builder: (context, catalog, child) => Column(
+            children: defaultInfo +
+                generateListView(catalog.nearbySlots, catalog.initial)));
+    // Column(children: defaultInfo + extraInfo);
   }
 }

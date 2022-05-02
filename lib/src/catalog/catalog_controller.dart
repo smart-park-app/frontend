@@ -1,13 +1,18 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-
+import 'package:http/http.dart' as http;
 import 'catalog_service.dart';
 
-class CatalogController {
+class CatalogController extends ChangeNotifier {
   CatalogController(this._catalogService);
 
   // Make SettingsService a private variable so it is not used directly.
   final CatalogService _catalogService;
+
+  List<dynamic> nearbySlots = [];
+  bool initial = true;
 
   /// Determine the current position of the device.
   ///
@@ -50,5 +55,28 @@ class CatalogController {
     return await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 5));
+  }
+
+  getNearbySlots(double lat, double long) {
+    var url = Uri.https('smartpark-catalog.herokuapp.com', '/slots/',
+        {"lat": lat.toString(), "long": long.toString()});
+    http.get(url).then((response) => {
+          print('======== Response status: ${response.statusCode}'),
+          print('======== Response body: ${response.body}'),
+          if (response.statusCode.toString() == '200')
+            {
+              this.nearbySlots = jsonDecode(response.body)['slots'],
+              this.initial = false,
+              print("===== Notifying listeners with updated value"),
+              print(this.nearbySlots),
+              notifyListeners()
+            },
+          // used to update bottomsheet
+        });
+  }
+
+  clearNearbySlots() {
+    this.nearbySlots = [];
+    // notifyListeners();
   }
 }
